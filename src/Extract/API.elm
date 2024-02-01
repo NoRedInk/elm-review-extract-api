@@ -301,6 +301,9 @@ visitExpression theExpression ctx =
                 ctx
                 recordSetters
 
+        Exp.RecordAccess exp _ ->
+            visitExpression exp ctx
+
         Exp.Negation exp ->
             visitExpression exp ctx
 
