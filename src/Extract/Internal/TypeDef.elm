@@ -32,17 +32,36 @@ import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNam
 --
 -- Since the type in the definition of `foo` is concrete, we're all good!
 --
--- On top of that, we may also be dealing with types imported from elsewhere
--- and composed in different places. So, we need some abstraction to pass these
+-- On top of that, we may also be dealing with types imported from elsewhere and
+-- composed in different places. So, we need some abstraction to pass these
 -- things around!
 --
--- To make matters ever so slightly more confusing, extensible records cannot appear
--- in the types passed to ports, at all... But they _can_ appear in flags! Why?
+-- To make matters ever so slightly more confusing, extensible records cannot
+-- appear in the types passed to ports, at all... But they _can_ appear in
+-- flags! Why? No one knows.
 --
--- No. One. Knows.
+-- When dealing with flags, it's not enough to "extract" from `main : Program
+-- flags model msg`; because there might be aliases for `Program`. So, we need
+-- to resolve the entire type signature for `main`, and then check whether that
+-- gives us a `Program`. This also means we can't ignore things that don't fit
+-- neatly into "only concrete types" because now we are also dealing with the
+-- annoying reality of unbound type variables and function type signatures. A
+-- signature like the below is perfectly valid in Elm:
 --
--- So, we can ignore custom types and function type because they're out of the
--- picture and need only worry about type aliases with type variables
+--     main : Program Flags (a -> b) (a -> b)
+--
+-- That said, the flags do need to have a nice, concrete, "simple" type.
+--
+-- So, we end up working with three abstractions:
+-- - `CodableTypeDef`, which are those we expect for flags and ports, and are
+--   encodable to json
+-- - `ConcreteTypeDef` are types that appear in type signatures for functions,
+--   like `main`. They are "concrete", but could still have unbound variables.
+-- - `TypeDef` represents either a `ConcreteTypeDef`, or a type that requires
+--   more parameters before maybe turning into a concrete typedef.
+--
+-- I suspect we may be able to simplify some of this, but that's what we're
+-- working with for the time being.
 
 
 type TypeDef
