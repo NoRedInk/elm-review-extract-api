@@ -1,6 +1,6 @@
 module Extract.APITest exposing (all)
 
-import Extract.API exposing (rule)
+import Extract.API exposing (WithFlags(..), rule)
 import Review.Test
 import Test exposing (Test, describe, test)
 
@@ -20,12 +20,15 @@ main =
         , subscriptions = \\_ -> Sub.none
         }
 """
-                    |> Review.Test.run rule
+                    |> Review.Test.run (rule WithFlags)
                     |> Review.Test.expectDataExtract """{
-  "A": {
-    "cmds": {},
-    "subs": {},
-    "flags": "unit"
+  "ports": {},
+  "entryPoints": {
+    "A": {
+      "cmds": [],
+      "subs": [],
+      "flags": "unit"
+    }
   }
 }
 """
@@ -41,16 +44,20 @@ main =
         , subscriptions = \\_ -> Sub.none
         }
 """
-                    |> Review.Test.run rule
-                    |> Review.Test.expectDataExtract """{
-  "A": {
-    "cmds": {},
-    "subs": {},
-    "flags": {
-      "type": "record",
-      "fields": {
-        "some": "string",
-        "other": "string"
+                    |> Review.Test.run (rule WithFlags)
+                    |> Review.Test.expectDataExtract """
+{
+  "ports": {},
+  "entryPoints": {
+    "A": {
+      "cmds": [],
+      "subs": [],
+      "flags": {
+        "type": "record",
+        "fields": {
+          "some": "string",
+          "other": "string"
+        }
       }
     }
   }
@@ -71,16 +78,20 @@ main =
         , subscriptions = \\_ -> Sub.none
         }
 """
-                    |> Review.Test.run rule
-                    |> Review.Test.expectDataExtract """{
-  "A": {
-    "cmds": {},
-    "subs": {},
-    "flags": {
-      "type": "record",
-      "fields": {
-        "some": "string",
-        "other": "string"
+                    |> Review.Test.run (rule WithFlags)
+                    |> Review.Test.expectDataExtract """
+{
+  "ports": {},
+  "entryPoints": {
+    "A": {
+      "cmds": [],
+      "subs": [],
+      "flags": {
+        "type": "record",
+        "fields": {
+          "some": "string",
+          "other": "string"
+        }
       }
     }
   }
@@ -111,17 +122,20 @@ main =
         , subscriptions = \\_ -> Sub.none
         }
 """
-                    |> Review.Test.run rule
+                    |> Review.Test.run (rule WithFlags)
                     |> Review.Test.expectDataExtract """
 {
-  "A": {
-    "cmds": {},
-    "subs": {},
-    "flags": {
-      "type": "record",
-      "fields": {
-        "some": "string",
-        "other": "string"
+  "ports": {},
+  "entryPoints": {
+    "A": {
+      "cmds": [],
+      "subs": [],
+      "flags": {
+        "type": "record",
+        "fields": {
+          "some": "string",
+          "other": "string"
+        }
       }
     }
   }
@@ -153,20 +167,23 @@ main =
         , subscriptions = \\_ -> Sub.none
         }
 """
-                    |> Review.Test.run rule
+                    |> Review.Test.run (rule WithFlags)
                     |> Review.Test.expectDataExtract """
 {
-  "A": {
-    "cmds": {
-      "myPort": "string"
-    },
-    "subs": {},
-    "flags": {
+  "ports": {
+    "myPort": "string"
+  },
+  "entryPoints": {
+    "A": {
+      "cmds": ["myPort"],
+      "subs": [],
+      "flags": {
       "type": "record",
       "fields": {
         "some": "string",
         "other": "string"
       }
+    }
     }
   }
 }
@@ -190,15 +207,18 @@ main =
         , subscriptions = \\_ -> Sub.none
         }
 """
-                    |> Review.Test.run rule
+                    |> Review.Test.run (rule WithFlags)
                     |> Review.Test.expectDataExtract """
 {
-  "A": {
-    "cmds": {
-      "myPort": "string"
-    },
-    "subs": {},
-    "flags": "unit"
+  "ports": {
+    "myPort": "string"
+  },
+  "entryPoints": {
+    "A": {
+      "cmds": ["myPort"],
+      "subs": [],
+      "flags": "unit"
+    }
   }
 }
 """
@@ -217,15 +237,18 @@ main =
         , subscriptions = \\_ -> myPort identity
         }
 """
-                    |> Review.Test.run rule
+                    |> Review.Test.run (rule WithFlags)
                     |> Review.Test.expectDataExtract """
 {
-  "A": {
-    "cmds": {},
-    "subs": {
-      "myPort": "unit"
-    },
-    "flags": "unit"
+  "ports": {
+    "myPort": "unit"
+  },
+  "entryPoints": {
+    "A": {
+      "cmds": [],
+      "subs": ["myPort"],
+      "flags": "unit"
+    }
   }
 }
 """
@@ -246,23 +269,25 @@ main =
         , subscriptions = \\_ -> myPort identity
         }
 """
-                    |> Review.Test.run rule
+                    |> Review.Test.run (rule WithFlags)
                     |> Review.Test.expectDataExtract """
 {
-  "A": {
-    "cmds": {
-      "myCmd": "string"
-    },
-    "subs": {
-      "myPort": "unit"
-    },
-    "flags": "unit"
+  "ports": {
+    "myCmd": "string",
+    "myPort": "unit"
+  },
+  "entryPoints": {
+    "A": {
+      "cmds": ["myCmd"],
+      "subs": ["myPort"],
+      "flags": "unit"
+    }
   }
 }
 """
         , test "A port called in a different module" <|
             \() ->
-                Review.Test.runOnModules rule
+                Review.Test.runOnModules (rule WithFlags)
                     [ """
 port module A exposing (..)
 
@@ -282,12 +307,15 @@ main =
 """ ]
                     |> Review.Test.expectDataExtract """
 {
-  "B": {
-    "cmds": {
-      "myCmd": "string"
-    },
-    "subs": {},
-    "flags": "unit"
+  "ports": {
+    "myCmd": "string"
+  },
+  "entryPoints": {
+    "B": {
+      "cmds": ["myCmd"],
+      "subs": [],
+      "flags": "unit"
+    }
   }
 }
 """
@@ -306,13 +334,16 @@ main =
         , subscriptions = \\_ -> Sub.none
         }
 """
-                    |> Review.Test.run rule
+                    |> Review.Test.run (rule WithFlags)
                     |> Review.Test.expectDataExtract """
 {
-  "A": {
-    "cmds": {},
-    "subs": {},
-    "flags": {"type": "record", "fields": {}}
+  "ports": {},
+  "entryPoints": {
+    "A": {
+      "cmds": [],
+      "subs": [],
+      "flags": {"type": "record", "fields": {}}
+    }
   }
 }
 """
@@ -331,19 +362,22 @@ main =
         , subscriptions = \\_ -> Sub.none
         }
 """
-                    |> Review.Test.run rule
+                    |> Review.Test.run (rule WithFlags)
                     |> Review.Test.expectDataExtract """
 {
-  "A": {
-    "cmds": {},
-    "subs": {},
-    "flags": "unit"
+  "ports": {},
+  "entryPoints": {
+    "A": {
+      "cmds": [],
+      "subs": [],
+      "flags": "unit"
+    }
   }
 }
 """
         , test "A silly but common setup" <|
             \() ->
-                Review.Test.runOnModules rule
+                Review.Test.runOnModules (rule WithFlags)
                     [ """
 module Msg exposing (..)
 
@@ -381,19 +415,22 @@ main =
 """ ]
                     |> Review.Test.expectDataExtract """
 {
-  "Main": {
-    "cmds": {},
-    "subs": {},
-    "flags": {
-      "type": "record",
-      "fields": {"field": "unit"}
+  "ports": {},
+  "entryPoints": {
+    "Main": {
+      "cmds": [],
+      "subs": [],
+      "flags": {
+        "type": "record",
+        "fields": {"field": "unit"}
+      }
     }
   }
 }
 """
         , test "More indirection" <|
             \() ->
-                Review.Test.runOnModules rule
+                Review.Test.runOnModules (rule WithFlags)
                     [ """
 module Msg exposing (..)
 
@@ -441,12 +478,15 @@ main =
 """ ]
                     |> Review.Test.expectDataExtract """
 {
-  "Main": {
-    "cmds": {},
-    "subs": {},
-    "flags": {
-      "type": "record",
-      "fields": {"field": "unit"}
+  "ports": {},
+  "entryPoints": {
+    "Main": {
+      "cmds": [],
+      "subs": [],
+      "flags": {
+        "type": "record",
+        "fields": {"field": "unit"}
+      }
     }
   }
 }
@@ -466,13 +506,16 @@ main =
         , subscriptions = \\_ -> Sub.none
         }
 """
-                    |> Review.Test.run rule
+                    |> Review.Test.run (rule WithFlags)
                     |> Review.Test.expectDataExtract """
 {
-  "A": {
-    "cmds": {},
-    "subs": {},
-    "flags": "unit"
+  "ports": {},
+  "entryPoints": {
+    "A": {
+      "cmds": [],
+      "subs": [],
+      "flags": "unit"
+    }
   }
 }
 """

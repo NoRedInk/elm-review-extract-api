@@ -35,27 +35,29 @@ Now, with this rule configured, running `elm-review --report=json --extract` can
 
 ``` json
 {
-    "Main": {
-        "cmds": {
-            "send": {
-                "type": "record",
-                "fields": {
-                    "data": "string",
-                    "finished": "bool"
-                }
-            }
-        },
-        "subs": {
-            "recv": {
-                "type": "list",
-                "content": "string"
-            }
-        },
-        "flags": {
+    "ports": {
+        "send": {
             "type": "record",
             "fields": {
-                "more": "string",
-                "stuff": "int"
+                "data": "string",
+                "finished": "bool"
+            }
+        },
+        "recv": {
+            "type": "list",
+            "content": "string"
+        }
+    },
+    "entryPoints": {
+        "Main": {
+            "cmds": ["send"],
+            "subs": ["recv"],
+            "flags": {
+                "type": "record",
+                "fields": {
+                    "more": "string",
+                    "stuff": "int"
+                }
             }
         }
     }

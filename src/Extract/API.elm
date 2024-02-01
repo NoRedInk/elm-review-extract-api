@@ -1,8 +1,8 @@
-module Extract.API exposing (rule)
+module Extract.API exposing (rule, WithFlags(..))
 
 {-|
 
-@docs rule
+@docs rule, WithFlags
 
 -}
 
@@ -23,14 +23,25 @@ import Review.Rule as Rule exposing (Rule)
 import Set exposing (Set)
 
 
+{-| Whether information about flags should be included in the extract.
+
+If this information isn't used, it can be nice to exclude it, so there's less need to
+worry about running into pipe-buffer size limitations.
+
+-}
+type WithFlags
+    = WithFlags
+    | WithoutFlags
+
+
 {-| Discover all entrypoints, record the ports and flags they use, and collect their types.
 
 To actually get to the information, `elm-review` must be used with `--report=json --extract`.
 
 -}
-rule : Rule
-rule =
-    Rule.newProjectRuleSchema "Extract.API" initialProjectContext
+rule : WithFlags -> Rule
+rule withFlags =
+    Rule.newProjectRuleSchema "Extract.API" (initialProjectContext withFlags)
         |> Rule.withModuleVisitor moduleVisitor
         |> Rule.withModuleContextUsingContextCreator
             { fromProjectToModule = fromProjectToModule
@@ -43,24 +54,36 @@ rule =
 
 
 reportAPI : ProjectContext -> Encode.Value
-reportAPI { entryPoints } =
-    entryPoints
-        |> Dict.toList
-        |> List.map (Tuple.mapBoth (String.join ".") encodeEntryPoint)
-        |> Encode.object
+reportAPI { ports, entryPoints, withFlags } =
+    Encode.object
+        [ ( "ports", encodePorts ports )
+        , ( "entryPoints"
+          , entryPoints
+                |> Dict.toList
+                |> List.map (Tuple.mapBoth (String.join ".") (encodeEntryPoint withFlags))
+                |> Encode.object
+          )
+        ]
 
 
-encodeEntryPoint : EntryPoint -> Encode.Value
-encodeEntryPoint entryPoint =
+encodeEntryPoint : WithFlags -> EntryPoint -> Encode.Value
+encodeEntryPoint withFlags entryPoint =
     let
         ( cmds, subs ) =
             Dict.partition (\_ v -> v.direction == CmdPort) entryPoint.ports
+
+        flagsData =
+            if withFlags == WithFlags then
+                [ ( "flags", encodeType entryPoint.flags ) ]
+
+            else
+                []
     in
     Encode.object
-        [ ( "cmds", encodePorts cmds )
-        , ( "subs", encodePorts subs )
-        , ( "flags", encodeType entryPoint.flags )
-        ]
+        (( "cmds", encodePortNames cmds )
+            :: ( "subs", encodePortNames subs )
+            :: flagsData
+        )
 
 
 encodeType : Maybe TypeDef.ConcreteTypeDef -> Encode.Value
@@ -68,6 +91,11 @@ encodeType =
     Maybe.andThen TypeDef.toCodable
         >> Maybe.map TypeDef.encode
         >> Maybe.withDefault (Encode.string "unknown")
+
+
+encodePortNames : Dict ( ModuleName, String ) PortInfo -> Encode.Value
+encodePortNames =
+    Dict.keys >> Encode.list (Tuple.second >> Encode.string)
 
 
 encodePorts : Dict ( ModuleName, String ) PortInfo -> Encode.Value
@@ -101,7 +129,8 @@ type PortDirection
 
 
 type alias ProjectContext =
-    { entryPoints : Dict ModuleName EntryPoint
+    { withFlags : WithFlags
+    , entryPoints : Dict ModuleName EntryPoint
     , ports : Dict ( ModuleName, String ) PortInfo
     , portCallers : Dict ( ModuleName, String ) (Set ( ModuleName, String ))
     , typeDefs : Dict ( ModuleName, String ) TypeDef.TypeDef
@@ -460,9 +489,10 @@ addPortForProcessing name typeAnnotation context =
             ( [], context )
 
 
-initialProjectContext : ProjectContext
-initialProjectContext =
-    { entryPoints = Dict.empty
+initialProjectContext : WithFlags -> ProjectContext
+initialProjectContext withFlags =
+    { withFlags = withFlags
+    , entryPoints = Dict.empty
     , ports = Dict.empty
     , portCallers = Dict.empty
     , typeDefs = Dict.empty
@@ -693,7 +723,8 @@ withEntryPoint ({ projectContext } as mod) =
 
 foldProjectContexts : ProjectContext -> ProjectContext -> ProjectContext
 foldProjectContexts new previous =
-    { entryPoints = Dict.union new.entryPoints previous.entryPoints
+    { withFlags = new.withFlags
+    , entryPoints = Dict.union new.entryPoints previous.entryPoints
     , ports = Dict.union new.ports previous.ports
     , portCallers = Dict.union new.portCallers previous.portCallers
     , typeDefs = Dict.union new.typeDefs previous.typeDefs
