@@ -23,6 +23,11 @@ import Review.Rule as Rule exposing (Rule)
 import Set exposing (Set)
 
 
+{-| Discover all entrypoints, record the ports and flags they use, and collect their types.
+
+To actually get to the information, `elm-review` must be used with `--report=json --extract`.
+
+-}
 rule : Rule
 rule =
     Rule.newProjectRuleSchema "Extract.API" initialProjectContext
