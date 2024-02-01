@@ -1,6 +1,6 @@
 {
     "type": "package",
-    "name": "NoRedInk/elm-review-extract-app-interface",
+    "name": "NoRedInk/elm-review-extract-api",
     "summary": "elm-review rule to extract ports and flags used in an application",
     "license": "BSD-3-Clause",
     "version": "1.0.0",
