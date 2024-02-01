@@ -465,9 +465,6 @@ getTypeCtor context ((Node _ ( moduleName, typName )) as typNode) acc =
             -- to hardcode it!
             ( pure (Concrete TJsonValue), acc )
 
-        ( Just [ "Platform" ], "Program" ) ->
-            ( pure (createCtor ( [ "Platform" ], "Program" )), acc )
-
         -- For tests, where we pass a rather useless ModuleName lookup table
         ( Nothing, "Maybe" ) ->
             ( pure (withSingle TMaybe), acc )
