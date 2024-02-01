@@ -7,11 +7,12 @@
       let pkgs = import nixpkgs { inherit system; };
       in {
         devShell = pkgs.mkShell {
-          buildInputs = [
-            pkgs.elmPackages.elm
-            pkgs.elmPackages.elm-format
-            pkgs.elmPackages.elm-review
-            pkgs.elmPackages.elm-test
+          buildInputs = with pkgs.elmPackages; [
+            elm
+            elm-format
+            elm-review
+            elm-test
+            elm-json
           ];
         };
       });
