@@ -116,7 +116,6 @@ type alias ModuleContext =
     , lookup : ModuleNameLookupTable
     , entryPoint : Maybe Signature
     , moduleName : ModuleName
-    , defsInScope : Dict ( ModuleName, String ) TypeDef.TypeDef
     , defsToProcess : Dict String ( List String, TypeAnnotation )
     , hasPorts : Bool
     , portsToProcess : List ( String, PortDirection, TypeAnnotation )
@@ -196,11 +195,11 @@ recordCallGraph impl_ context =
     -- We only go here if we know ports are somehow in scope - either because this
     -- is a port module or it transitively imports a port module.
     --
-    -- Later on, we'll cull and collect this callgraph to figure out which functions
-    -- end up calling which ports.
+    -- Later on, when we're done with the current module, we'll cull and collect
+    -- this callgraph to figure out which functions end up calling which ports.
     --
-    -- first up, let's add ourselves and our patters to the scope
-    -- then, we visit the actual expression!
+    -- first up, let's add ourselves and our patters to the scope. Then, we visit
+    -- the actual expression!
     context
         |> addVariableToScope (Node.value impl.name)
         |> addVariablesToScope (List.concatMap (Node.value >> namesFromPattern) impl.arguments)
@@ -230,10 +229,9 @@ recordCall call ctx =
 
 visitExpression : Node Expression -> ModuleContext -> ModuleContext
 visitExpression theExpression ctx =
-    -- so what we're trying to do here, is figure out
-    -- the callgraph. the way we're doing that, is basically by recursing
-    -- through expressions, recording all functions they call.
-    -- Easy peasy, right!
+    -- so what we're trying to do here, is figure out the callgraph. the way
+    -- we're doing that, is basically by recursing through expressions,
+    -- recording all functions they call. Easy peasy, right!
     case Node.value theExpression of
         Exp.Application app ->
             List.foldl visitExpression ctx app
@@ -246,6 +244,11 @@ visitExpression theExpression ctx =
         Exp.FunctionOrValue _ val ->
             case ModuleNameLookupTable.moduleNameFor ctx.lookup theExpression of
                 Just [] ->
+                    -- if `val` refers to a variable passed through as an
+                    -- argument of a function or is otherwise bound by a pattern
+                    -- in a let declaration or a case-branch, we don't want to
+                    -- record that as a "call": we're not calling a named
+                    -- function
                     if inScope val ctx then
                         ctx
 
@@ -472,7 +475,6 @@ fromProjectToModule =
             , entryPoint = Nothing
             , moduleName = moduleName
             , defsToProcess = Dict.empty
-            , defsInScope = projectContext.typeDefs
             , hasPorts = not (Dict.isEmpty projectContext.ports)
             , portsToProcess = []
             , variables = ( Set.empty, [] )
@@ -515,37 +517,24 @@ withTypeDefs ({ projectContext } as ctx) =
 pruneCallGraph : ModuleContext -> ModuleContext
 pruneCallGraph ctx =
     let
+        withRealModuleName ( modName, fnName ) =
+            -- this means we're talking about a call to a function inthe current
+            -- module, but we want to register and lookup calls fully qualified
+            if modName == [] then
+                ( ctx.moduleName, fnName )
+
+            else
+                ( modName, fnName )
+
         ( hasInteresting, result ) =
             Dict.foldl
                 (\fnName calls acc ->
                     Set.foldl
-                        (\( modName_, calledFnName ) ( interest_, acc_ ) ->
-                            let
-                                modName =
-                                    if modName_ == [] then
-                                        ctx.moduleName
-
-                                    else
-                                        modName_
-
-                                calledFn =
-                                    ( modName, calledFnName )
-
-                                indirectPortCalls =
-                                    Dict.get calledFn ctx.projectContext.portCallers
-                            in
-                            case ( Dict.member calledFn ctx.projectContext.ports, indirectPortCalls ) of
-                                ( False, Nothing ) ->
-                                    ( interest_, acc_ )
-
-                                ( True, Nothing ) ->
-                                    ( True, registerPortCall fnName (Set.singleton calledFn) acc_ )
-
-                                ( False, Just indirect ) ->
-                                    ( True, registerPortCall fnName indirect acc_ )
-
-                                ( True, Just indirect ) ->
-                                    ( True, registerPortCall fnName (Set.insert calledFn indirect) acc_ )
+                        (\calledFn ( interest_, acc_ ) ->
+                            Dict.get (withRealModuleName calledFn) acc_.projectContext.portCallers
+                                |> Maybe.map (registerPortCall fnName acc_)
+                                |> Maybe.map (Tuple.mapFirst (\i -> i || interest_))
+                                |> Maybe.withDefault ( interest_, acc_ )
                         )
                         acc
                         calls
@@ -560,18 +549,29 @@ pruneCallGraph ctx =
         result
 
 
-registerPortCall : String -> Set ( ModuleName, String ) -> ModuleContext -> ModuleContext
-registerPortCall name calls ({ projectContext } as ctx) =
-    { ctx
-        | callGraph = Dict.remove name ctx.callGraph
-        , projectContext =
-            { projectContext
-                | portCallers =
-                    Dict.update ( ctx.moduleName, name )
-                        (Maybe.withDefault Set.empty >> Set.union calls >> Just)
-                        projectContext.portCallers
-            }
-    }
+registerPortCall : String -> ModuleContext -> Set ( ModuleName, String ) -> ( Bool, ModuleContext )
+registerPortCall name ({ projectContext } as ctx) calls =
+    let
+        hasNewCalls =
+            Dict.get ( ctx.moduleName, name ) projectContext.portCallers
+                |> Maybe.map (Set.diff calls >> Set.isEmpty >> not)
+                |> Maybe.withDefault True
+    in
+    ( hasNewCalls
+    , if hasNewCalls then
+        { ctx
+            | projectContext =
+                { projectContext
+                    | portCallers =
+                        Dict.update ( ctx.moduleName, name )
+                            (Maybe.withDefault Set.empty >> Set.union calls >> Just)
+                            projectContext.portCallers
+                }
+        }
+
+      else
+        ctx
+    )
 
 
 processTypeDefs : ModuleContext -> ModuleContext
@@ -581,7 +581,7 @@ processTypeDefs mod =
             Dict.union
                 (TypeDef.resolveTypes
                     { lookup = mod.lookup
-                    , defsInScope = mod.defsInScope
+                    , defsInScope = mod.projectContext.typeDefs
                     , localDefs = mod.typeDefs
                     }
                     mod.defsToProcess
@@ -593,27 +593,36 @@ processTypeDefs mod =
 
 processPorts : ModuleContext -> ModuleContext
 processPorts ({ projectContext } as mod) =
+    let
+        ( updatedPorts, updatedPortCallers ) =
+            List.foldl
+                (\( portName, portDirection, tyAnn ) ( ports, callers ) ->
+                    ( Dict.insert ( mod.moduleName, portName )
+                        { direction = portDirection
+                        , type_ =
+                            TypeDef.resolveTypeAnnotation
+                                { lookup = mod.lookup
+                                , defsInScope = projectContext.typeDefs
+                                , localDefs = mod.typeDefs
+                                }
+                                tyAnn
+                        }
+                        ports
+                    , Dict.insert ( mod.moduleName, portName )
+                        (Set.singleton ( mod.moduleName, portName ))
+                        callers
+                    )
+                )
+                ( projectContext.ports, projectContext.portCallers )
+                mod.portsToProcess
+    in
     { mod
         | projectContext =
             { projectContext
-                | ports =
-                    List.foldr
-                        (\( portName, portDirection, tyAnn ) acc ->
-                            Dict.insert ( mod.moduleName, portName )
-                                { direction = portDirection
-                                , type_ =
-                                    TypeDef.resolveTypeAnnotation
-                                        { lookup = mod.lookup
-                                        , defsInScope = mod.defsInScope
-                                        , localDefs = mod.typeDefs
-                                        }
-                                        tyAnn
-                                }
-                                acc
-                        )
-                        projectContext.ports
-                        mod.portsToProcess
+                | ports = updatedPorts
+                , portCallers = updatedPortCallers
             }
+        , portsToProcess = []
     }
 
 
@@ -622,7 +631,7 @@ extractFlagsTypeAnnotation mod sig =
     case
         TypeDef.resolveTypeAnnotation
             { lookup = mod.lookup
-            , defsInScope = mod.defsInScope
+            , defsInScope = mod.projectContext.typeDefs
             , localDefs = mod.typeDefs
             }
             (Node.value sig.typeAnnotation)
