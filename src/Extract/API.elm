@@ -47,8 +47,13 @@ reportAPI { entryPoints } =
 
 encodeEntryPoint : EntryPoint -> Encode.Value
 encodeEntryPoint entryPoint =
+    let
+        ( cmds, subs ) =
+            Dict.partition (\_ v -> v.direction == CmdPort) entryPoint.ports
+    in
     Encode.object
-        [ ( "ports", encodePorts entryPoint.ports )
+        [ ( "cmds", encodePorts cmds )
+        , ( "subs", encodePorts subs )
         , ( "flags", encodeType entryPoint.flags )
         ]
 
@@ -63,24 +68,8 @@ encodeType =
 encodePorts : Dict ( ModuleName, String ) PortInfo -> Encode.Value
 encodePorts =
     Dict.toList
-        >> List.map (Tuple.mapBoth Tuple.second encodePortInfo)
+        >> List.map (Tuple.mapBoth Tuple.second (.type_ >> encodeType))
         >> Encode.object
-
-
-encodePortInfo : PortInfo -> Encode.Value
-encodePortInfo portInfo =
-    Encode.object
-        [ ( "direction"
-          , Encode.string <|
-                case portInfo.direction of
-                    CmdPort ->
-                        "cmd"
-
-                    SubPort ->
-                        "sub"
-          )
-        , ( "type", encodeType portInfo.type_ )
-        ]
 
 
 type alias EntryPoint =

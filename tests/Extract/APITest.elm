@@ -23,7 +23,8 @@ main =
                     |> Review.Test.run rule
                     |> Review.Test.expectDataExtract """{
   "A": {
-    "ports": {},
+    "cmds": {},
+    "subs": {},
     "flags": "unit"
   }
 }
@@ -43,7 +44,8 @@ main =
                     |> Review.Test.run rule
                     |> Review.Test.expectDataExtract """{
   "A": {
-    "ports": {},
+    "cmds": {},
+    "subs": {},
     "flags": {
       "type": "record",
       "fields": {
@@ -72,7 +74,8 @@ main =
                     |> Review.Test.run rule
                     |> Review.Test.expectDataExtract """{
   "A": {
-    "ports": {},
+    "cmds": {},
+    "subs": {},
     "flags": {
       "type": "record",
       "fields": {
@@ -112,7 +115,8 @@ main =
                     |> Review.Test.expectDataExtract """
 {
   "A": {
-    "ports": {},
+    "cmds": {},
+    "subs": {},
     "flags": {
       "type": "record",
       "fields": {
@@ -153,12 +157,10 @@ main =
                     |> Review.Test.expectDataExtract """
 {
   "A": {
-    "ports": {
-      "myPort": {
-        "direction": "cmd",
-        "type": "string"
-      }
+    "cmds": {
+      "myPort": "string"
     },
+    "subs": {},
     "flags": {
       "type": "record",
       "fields": {
@@ -192,12 +194,10 @@ main =
                     |> Review.Test.expectDataExtract """
 {
   "A": {
-    "ports": {
-      "myPort": {
-        "direction": "cmd",
-        "type": "string"
-      }
+    "cmds": {
+      "myPort": "string"
     },
+    "subs": {},
     "flags": "unit"
   }
 }
@@ -221,11 +221,9 @@ main =
                     |> Review.Test.expectDataExtract """
 {
   "A": {
-    "ports": {
-      "myPort": {
-        "direction": "sub",
-        "type": "unit"
-      }
+    "cmds": {},
+    "subs": {
+      "myPort": "unit"
     },
     "flags": "unit"
   }
@@ -252,15 +250,11 @@ main =
                     |> Review.Test.expectDataExtract """
 {
   "A": {
-    "ports": {
-      "myCmd": {
-        "direction": "cmd",
-        "type": "string"
-      },
-      "myPort": {
-        "direction": "sub",
-        "type": "unit"
-      }
+    "cmds": {
+      "myCmd": "string"
+    },
+    "subs": {
+      "myPort": "unit"
     },
     "flags": "unit"
   }
@@ -289,9 +283,10 @@ main =
                     |> Review.Test.expectDataExtract """
 {
   "B": {
-    "ports": {
-      "myCmd": {"direction": "cmd", "type": "string"}
+    "cmds": {
+      "myCmd": "string"
     },
+    "subs": {},
     "flags": "unit"
   }
 }
@@ -315,7 +310,8 @@ main =
                     |> Review.Test.expectDataExtract """
 {
   "A": {
-    "ports": {},
+    "cmds": {},
+    "subs": {},
     "flags": {"type": "record", "fields": {}}
   }
 }
@@ -339,7 +335,8 @@ main =
                     |> Review.Test.expectDataExtract """
 {
   "A": {
-    "ports": {},
+    "cmds": {},
+    "subs": {},
     "flags": "unit"
   }
 }
@@ -385,7 +382,8 @@ main =
                     |> Review.Test.expectDataExtract """
 {
   "Main": {
-    "ports": {},
+    "cmds": {},
+    "subs": {},
     "flags": {
       "type": "record",
       "fields": {"field": "unit"}
@@ -444,7 +442,8 @@ main =
                     |> Review.Test.expectDataExtract """
 {
   "Main": {
-    "ports": {},
+    "cmds": {},
+    "subs": {},
     "flags": {
       "type": "record",
       "fields": {"field": "unit"}
@@ -471,7 +470,8 @@ main =
                     |> Review.Test.expectDataExtract """
 {
   "A": {
-    "ports": {},
+    "cmds": {},
+    "subs": {},
     "flags": "unit"
   }
 }
