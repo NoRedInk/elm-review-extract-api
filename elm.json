@@ -3,7 +3,7 @@
     "name": "NoRedInk/elm-review-extract-api",
     "summary": "elm-review rule to extract ports and flags used in an application",
     "license": "BSD-3-Clause",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "exposed-modules": [
         "Extract.API"
     ],
