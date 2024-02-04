@@ -8,6 +8,7 @@ module Extract.API exposing (rule, WithFlags(..))
 
 import Dict exposing (Dict)
 import Elm.Syntax.Declaration as Declaration exposing (Declaration)
+import Elm.Syntax.Exposing as Exposing exposing (Exposing)
 import Elm.Syntax.Expression as Exp exposing (Expression)
 import Elm.Syntax.Module as Module exposing (Module)
 import Elm.Syntax.ModuleName exposing (ModuleName)
@@ -143,6 +144,11 @@ type alias Scope =
     }
 
 
+type ExposedThings
+    = All
+    | Selected (Set String)
+
+
 type alias ModuleContext =
     { projectContext : ProjectContext
     , typeDefs : Dict String TypeDef.TypeDef
@@ -154,6 +160,9 @@ type alias ModuleContext =
     , hasPorts : Bool
     , portsToProcess : List ( String, PortDirection, TypeAnnotation )
 
+    -- We want to only resolve types that are exposed, to save time and memory
+    , exposedThings : ExposedThings
+
     -- These are "scoped" to a single top level declaration, and reset
     -- at the end of processing each declaration. They're really more of
     -- a "declaration context", but we don't have such a thing builtin
@@ -161,6 +170,16 @@ type alias ModuleContext =
     , variables : ( Set String, List (Set String) )
     , calls : Set ( ModuleName, String )
     }
+
+
+isExposed : ModuleContext -> String -> Bool
+isExposed ctx thing =
+    case ctx.exposedThings of
+        All ->
+            True
+
+        Selected things ->
+            Set.member thing things
 
 
 moduleVisitor : Rule.ModuleRuleSchema schema ModuleContext -> Rule.ModuleRuleSchema { schema | hasAtLeastOneVisitor : () } ModuleContext
@@ -172,7 +191,39 @@ moduleVisitor schema =
 
 moduleDefinitionVisitor : Node Module -> ModuleContext -> ( List never, ModuleContext )
 moduleDefinitionVisitor (Node _ mod) context =
-    ( [], { context | hasPorts = context.hasPorts || Module.isPortModule mod } )
+    ( []
+    , { context
+        | hasPorts = context.hasPorts || Module.isPortModule mod
+        , exposedThings = processExposing (Module.exposingList mod)
+      }
+    )
+
+
+processExposing : Exposing -> ExposedThings
+processExposing exp =
+    case exp of
+        Exposing.All _ ->
+            All
+
+        Exposing.Explicit items ->
+            items
+                |> List.filterMap
+                    (\(Node _ exposedThing) ->
+                        case exposedThing of
+                            Exposing.InfixExpose _ ->
+                                Nothing
+
+                            Exposing.FunctionExpose name ->
+                                Just name
+
+                            Exposing.TypeOrAliasExpose name ->
+                                Just name
+
+                            Exposing.TypeExpose { name } ->
+                                Just name
+                    )
+                |> Set.fromList
+                |> Selected
 
 
 declarationVisitor : Node Declaration -> ModuleContext -> ( List never, ModuleContext )
@@ -511,6 +562,7 @@ fromProjectToModule =
             , moduleName = moduleName
             , defsToProcess = Dict.empty
             , hasPorts = not (Dict.isEmpty projectContext.ports)
+            , exposedThings = All
             , portsToProcess = []
             , variables = ( Set.empty, [] )
             , calls = Set.empty
@@ -613,16 +665,14 @@ processTypeDefs : ModuleContext -> ModuleContext
 processTypeDefs mod =
     { mod
         | typeDefs =
-            Dict.union
-                (TypeDef.resolveTypes
+            mod.defsToProcess
+                |> Dict.filter (\name _ -> isExposed mod name)
+                |> TypeDef.resolveTypes
                     { lookup = mod.lookup
                     , defsInScope = mod.projectContext.typeDefs
                     , localDefs = mod.typeDefs
                     }
-                    mod.defsToProcess
-                )
-                mod.typeDefs
-        , defsToProcess = Dict.empty
+                |> Dict.union mod.typeDefs
     }
 
 
@@ -639,6 +689,7 @@ processPorts ({ projectContext } as mod) =
                                 { lookup = mod.lookup
                                 , defsInScope = projectContext.typeDefs
                                 , localDefs = mod.typeDefs
+                                , unresolved = mod.defsToProcess
                                 }
                                 tyAnn
                         }
@@ -668,6 +719,7 @@ extractFlagsTypeAnnotation mod sig =
             { lookup = mod.lookup
             , defsInScope = mod.projectContext.typeDefs
             , localDefs = mod.typeDefs
+            , unresolved = mod.defsToProcess
             }
             (Node.value sig.typeAnnotation)
     of

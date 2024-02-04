@@ -231,14 +231,15 @@ resolveTypeAnnotation :
     { lookup : ModuleNameLookupTable
     , defsInScope : Dict ( ModuleName, String ) TypeDef
     , localDefs : Dict String TypeDef
+    , unresolved : Dict String ( List String, TypeAnnotation )
     }
     -> TypeAnnotation
     -> Maybe ConcreteTypeDef
-resolveTypeAnnotation { lookup, defsInScope, localDefs } tyAnn =
+resolveTypeAnnotation { lookup, defsInScope, localDefs, unresolved } tyAnn =
     resolveTyAnn
         { lookup = lookup, defsInScope = defsInScope, localDefs = localDefs }
         tyAnn
-        { results = localDefs, defs = Dict.empty }
+        { results = localDefs, defs = unresolved }
         |> Tuple.first
         |> materialize
 
