@@ -14,3 +14,13 @@ msequence =
 mtraverse : (a -> Maybe b) -> List a -> Maybe (List b)
 mtraverse f =
     List.foldr (\x -> Maybe.map2 (::) (f x)) (Just [])
+
+
+orElse : Maybe a -> Maybe a -> Maybe a
+orElse snd fst =
+    case fst of
+        Nothing ->
+            snd
+
+        _ ->
+            fst

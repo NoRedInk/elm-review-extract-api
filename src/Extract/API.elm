@@ -17,7 +17,7 @@ import Elm.Syntax.Pattern exposing (Pattern(..))
 import Elm.Syntax.Signature as Signature exposing (Signature)
 import Elm.Syntax.TypeAnnotation as TAnn exposing (TypeAnnotation)
 import Extract.Internal.TypeDef as TypeDef
-import Extract.Internal.Util exposing (flip)
+import Extract.Internal.Util exposing (flip, orElse)
 import Json.Encode as Encode
 import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNameLookupTable)
 import Review.Rule as Rule exposing (Rule)
@@ -603,6 +603,13 @@ withTypeDefs ({ projectContext } as ctx) =
 
 pruneCallGraph : ModuleContext -> ModuleContext
 pruneCallGraph ctx =
+    findCallersOfKnownPortCallers ctx
+        |> findIndirectLocalCallers ctx
+        |> onlyExposedPortCalls ctx
+
+
+findCallersOfKnownPortCallers : ModuleContext -> Dict String (Set ( ModuleName, String ))
+findCallersOfKnownPortCallers ctx =
     let
         withRealModuleName ( modName, fnName ) =
             -- this means we're talking about a call to a function inthe current
@@ -612,53 +619,81 @@ pruneCallGraph ctx =
 
             else
                 ( modName, fnName )
+    in
+    Dict.foldl
+        (\fnName calls acc ->
+            Set.foldl
+                (\calledFn acc_ ->
+                    Dict.get (withRealModuleName calledFn) ctx.projectContext.portCallers
+                        |> Maybe.map (registerCall fnName acc_)
+                        |> Maybe.withDefault acc_
+                )
+                acc
+                calls
+        )
+        Dict.empty
+        ctx.callGraph
 
-        ( hasInteresting, result ) =
+
+registerCall : String -> Dict String (Set ( ModuleName, String )) -> Set ( ModuleName, String ) -> Dict String (Set ( ModuleName, String ))
+registerCall fnName acc calls =
+    Dict.update fnName (Maybe.withDefault Set.empty >> Set.union calls >> Just) acc
+
+
+findIndirectLocalCallers :
+    ModuleContext
+    -> Dict String (Set ( ModuleName, String ))
+    -> Dict String (Set ( ModuleName, String ))
+findIndirectLocalCallers ctx localPortCallers =
+    let
+        toLocalFn ( moduleName, fnName ) =
+            if moduleName == ctx.moduleName then
+                Just fnName
+
+            else
+                Nothing
+
+        result =
             Dict.foldl
                 (\fnName calls acc ->
                     Set.foldl
-                        (\calledFn ( interest_, acc_ ) ->
-                            Dict.get (withRealModuleName calledFn) acc_.projectContext.portCallers
-                                |> Maybe.map (registerPortCall fnName acc_)
-                                |> Maybe.map (Tuple.mapFirst (\i -> i || interest_))
-                                |> Maybe.withDefault ( interest_, acc_ )
+                        (\calledFn acc_ ->
+                            toLocalFn calledFn
+                                |> Maybe.andThen (flip Dict.get acc_)
+                                |> Maybe.map (registerCall fnName acc_)
+                                |> Maybe.withDefault acc_
                         )
                         acc
                         calls
                 )
-                ( False, ctx )
+                localPortCallers
                 ctx.callGraph
     in
-    if hasInteresting then
-        pruneCallGraph result
-
-    else
+    if localPortCallers == result then
         result
 
+    else
+        findIndirectLocalCallers ctx result
 
-registerPortCall : String -> ModuleContext -> Set ( ModuleName, String ) -> ( Bool, ModuleContext )
-registerPortCall name ({ projectContext } as ctx) calls =
-    let
-        hasNewCalls =
-            Dict.get ( ctx.moduleName, name ) projectContext.portCallers
-                |> Maybe.map (Set.diff calls >> Set.isEmpty >> not)
-                |> Maybe.withDefault True
-    in
-    ( hasNewCalls
-    , if hasNewCalls then
-        { ctx
-            | projectContext =
-                { projectContext
-                    | portCallers =
-                        Dict.update ( ctx.moduleName, name )
-                            (Maybe.withDefault Set.empty >> Set.union calls >> Just)
-                            projectContext.portCallers
-                }
-        }
 
-      else
-        ctx
-    )
+onlyExposedPortCalls : ModuleContext -> Dict String (Set ( ModuleName, String )) -> ModuleContext
+onlyExposedPortCalls ({ projectContext } as ctx) portCallers =
+    { ctx
+        | projectContext =
+            { projectContext
+                | portCallers =
+                    Dict.foldl
+                        (\fnName calls acc ->
+                            if isExposed ctx fnName then
+                                Dict.insert ( ctx.moduleName, fnName ) calls acc
+
+                            else
+                                acc
+                        )
+                        projectContext.portCallers
+                        portCallers
+            }
+    }
 
 
 processTypeDefs : ModuleContext -> ModuleContext
